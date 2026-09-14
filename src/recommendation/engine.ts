@@ -84,15 +84,39 @@ function compact<T>(values: Array<T | undefined>): T[] {
   return values.filter((value): value is T => value !== undefined);
 }
 
-function gearFor(recipe: TargetRecipe, includeEffects = true): AmplitubeGear[] {
+function gearFor(recipe: TargetRecipe, options: { includeCab?: boolean; includeEffects?: boolean } = {}): AmplitubeGear[] {
+  const includeCab = options.includeCab ?? true;
+  const includeEffects = options.includeEffects ?? true;
   return compact([
     recipe.gainClass === "high-gain" ? getAmplitubeGear("stomp-noise-gate") : getAmplitubeGear("stomp-compressor"),
     recipe.settings.odLevel ? getAmplitubeGear("stomp-diode-overdrive") : undefined,
     getAmplitubeGear(recipe.ampId),
-    getAmplitubeGear(recipe.cabId),
+    includeCab ? getAmplitubeGear(recipe.cabId) : undefined,
     includeEffects ? getAmplitubeGear("rack-parametric-eq") : undefined,
     includeEffects ? getAmplitubeGear("rack-digital-reverb") : undefined,
   ]);
+}
+
+function chooseRecommendedWorkflow(input: RecommendationInput, hasLiveTones: boolean): { workflow: Workflow; decision: string } {
+  if (input.preferredWorkflow) {
+    return { workflow: input.preferredWorkflow, decision: "The user explicitly selected this workflow." };
+  }
+  if (input.ownsAmplitube5Max === false) {
+    return { workflow: "tone3000", decision: "TONE3000 is preferred because AmpliTube 5 MAX is not available in the supplied setup." };
+  }
+  if (input.priority === "maximum-tweakability") {
+    return { workflow: "amplitube", decision: "AmpliTube is preferred because continuously adjustable amp controls are the priority." };
+  }
+  if (input.priority === "cabinet-flexibility" || /tone3000\s+(cab|ir)|cabinet\s+ir|impulse response/i.test(input.target)) {
+    return { workflow: "hybrid", decision: "The hybrid workflow keeps the AmpliTube amp adjustable while using a TONE3000 cabinet IR." };
+  }
+  if (input.tone3000PluginInstalled === false) {
+    return { workflow: "amplitube", decision: "AmpliTube is preferred because the TONE3000 plugin is not installed in the supplied setup." };
+  }
+  if (hasLiveTones) {
+    return { workflow: "tone3000", decision: "A matching live capture is available, so a ready-to-load TONE3000 plugin preset is the fastest testable result." };
+  }
+  return { workflow: "amplitube", decision: "AmpliTube instructions are the most complete offline deliverable because no live TONE3000 capture was resolved." };
 }
 
 function applyInstrumentAdjustments(settings: KnobSettings, input: RecommendationInput): KnobSettings {
@@ -139,6 +163,24 @@ async function findTones(client: Tone3000Client, recipe: TargetRecipe): Promise<
   }
 }
 
+async function findCabIrs(client: Tone3000Client, recipe: TargetRecipe): Promise<{ tones: NormalizedTone[]; status: string }> {
+  if (!client.configured) {
+    return { tones: [], status: "Live TONE3000 cabinet search is disabled until TONE3000_SECRET_KEY is configured." };
+  }
+  try {
+    const query = `${recipe.cabDescription} cabinet IR`;
+    const response = await client.searchTones({ query, pageSize: 6, sort: "best-match", gears: ["cab"], format: "ir" });
+    const tones = rankTones(response.data.map(normalizeTone), { query, desiredGear: ["cab"] }).slice(0, 4);
+    return {
+      tones,
+      status: tones.length ? `Found ${tones.length} ranked TONE3000 cabinet IR candidates.` : "TONE3000 returned no matching cabinet IRs.",
+    };
+  } catch (error) {
+    const message = error instanceof Tone3000Error ? error.message : "TONE3000 cabinet search failed unexpectedly.";
+    return { tones: [], status: message };
+  }
+}
+
 function toneChain(tone: NormalizedTone | undefined): { chain: string[]; warnings: string[] } {
   if (!tone) return { chain: ["Input", "Noise Gate (if needed)", "TONE3000 capture", "Cab/IR when required", "Post EQ"], warnings: [] };
   if (tone.requiresCabOrIr) {
@@ -152,17 +194,20 @@ function toneChain(tone: NormalizedTone | undefined): { chain: string[]; warning
 
 export async function recommendToneChain(client: Tone3000Client, input: RecommendationInput): Promise<RecommendationResult> {
   const recipe = recipeFor(input.target, input.desiredGain);
-  const live = await findTones(client, recipe);
+  const selectedWorkflows: Workflow[] = input.preferredWorkflow ? [input.preferredWorkflow] : ["tone3000", "amplitube", "hybrid"];
+  const live = selectedWorkflows.includes("tone3000") ? await findTones(client, recipe) : { tones: [], status: "TONE3000 amp search was not needed for this workflow." };
+  const cabinetIrs = selectedWorkflows.includes("hybrid") ? await findCabIrs(client, recipe) : { tones: [], status: "TONE3000 cabinet search was not needed for this workflow." };
   const settings = applyInstrumentAdjustments({ input: "Set interface gain so hard picking stays clean and does not clip before the model.", ...recipe.settings }, input);
   const first = live.tones[0];
   const t3kChain = toneChain(first);
-  const selectedWorkflows: Workflow[] = input.preferredWorkflow ? [input.preferredWorkflow] : ["tone3000", "amplitube", "hybrid"];
+  const recommended = chooseRecommendedWorkflow(input, live.tones.length > 0);
   const approaches: ToneApproach[] = [];
 
   if (selectedWorkflows.includes("tone3000")) {
     approaches.push({
       workflow: "tone3000",
-      title: "TONE3000-focused",
+      deliveryKind: "tone3000-preset",
+      title: "Ready-to-load TONE3000 plugin preset",
       signalChain: t3kChain.chain,
       tone3000Models: live.tones,
       amplitubeGear: [],
@@ -178,6 +223,7 @@ export async function recommendToneChain(client: Tone3000Client, input: Recommen
     const selectedGear = gearFor(recipe);
     approaches.push({
       workflow: "amplitube",
+      deliveryKind: "amplitube-instructions",
       title: "AmpliTube 5 MAX-only",
       signalChain: selectedGear.map((item) => item.displayName),
       tone3000Models: [],
@@ -191,22 +237,25 @@ export async function recommendToneChain(client: Tone3000Client, input: Recommen
   }
 
   if (selectedWorkflows.includes("hybrid")) {
-    const hybridTone = live.tones.find((tone) => tone.captureType === "amp-head") ?? first;
-    const hybridChain = toneChain(hybridTone);
-    const postGear = compact([getAmplitubeGear("stomp-noise-gate"), recipe.settings.odLevel ? getAmplitubeGear("stomp-diode-overdrive") : undefined, hybridTone?.requiresCabOrIr ? getAmplitubeGear(recipe.cabId) : undefined, getAmplitubeGear("rack-parametric-eq"), getAmplitubeGear("rack-digital-reverb")]);
+    const cabinetIr = cabinetIrs.tones[0];
+    const amplitubeGear = gearFor(recipe, { includeCab: false });
     approaches.push({
       workflow: "hybrid",
-      title: "Hybrid",
-      signalChain: hybridTone?.requiresCabOrIr
-        ? ["AmpliTube Noise Gate", "AmpliTube low-drive boost", `TONE3000 amp-head: ${hybridTone.title}`, `AmpliTube cab: ${getAmplitubeGear(recipe.cabId)?.displayName ?? "matching cab"}`, "AmpliTube Parametric EQ", "AmpliTube Digital Reverb"]
-        : hybridChain.chain,
-      tone3000Models: hybridTone ? [hybridTone] : [],
-      amplitubeGear: postGear,
+      deliveryKind: "amplitube-instructions-and-tone3000-ir",
+      title: "Adjustable AmpliTube amp with a TONE3000 cabinet IR",
+      signalChain: [
+        ...amplitubeGear.filter((item) => item.type === "stomp").map((item) => `AmpliTube ${item.displayName}`),
+        `AmpliTube ${getAmplitubeGear(recipe.ampId)?.displayName ?? "amp"}`,
+        cabinetIr ? `AmpliTube IR Loader: TONE3000 cabinet IR ${cabinetIr.title}` : "AmpliTube IR Loader: select a compatible TONE3000 cabinet IR",
+        "AmpliTube post-EQ and ambience",
+      ],
+      tone3000Models: cabinetIrs.tones,
+      amplitubeGear,
       settings,
-      cabRecommendation: hybridTone?.alreadyContainsCabinet ? "Skip AmpliTube's cab block because this capture already contains a cabinet." : recipe.cabDescription,
-      gainStaging: [settings.input, "Keep the boost output below digital clipping.", "Level-match the TONE3000 block before and after AmpliTube post processing."],
-      rationale: [recipe.interpretation, "The capture supplies the fixed amp snapshot while AmpliTube supplies flexible boost, cabinet/mic choice, EQ, delay, and reverb."],
-      warnings: hybridChain.warnings,
+      cabRecommendation: cabinetIr ? `Download ${cabinetIr.title} from ${cabinetIr.directUrl} and load its .wav model into AmpliTube's IR Loader.` : recipe.cabDescription,
+      gainStaging: [settings.input, "Disable AmpliTube's normal cabinet block when the external TONE3000 IR is active.", "Level-match the IR Loader before judging cabinet differences."],
+      rationale: [recipe.interpretation, "This keeps the amp continuously adjustable in AmpliTube while using a specific TONE3000 cabinet capture."],
+      warnings: cabinetIr ? ["Use an IR-format .wav model. Do not load a NAM amp capture into AmpliTube's IR Loader."] : ["No live cabinet IR was resolved; search TONE3000 cabinets before building this chain."],
     });
   }
 
@@ -214,12 +263,14 @@ export async function recommendToneChain(client: Tone3000Client, input: Recommen
     target: input.target,
     interpretation: recipe.interpretation,
     preferredWorkflow: input.preferredWorkflow ?? null,
+    recommendedWorkflow: recommended.workflow,
+    decision: recommended.decision,
     approaches,
     caveats: [
       "All values are starting points on a 0–10 scale, not claims of exact recorded settings.",
       "Pickup output, guitar, tuning, interface gain, monitoring volume, and IR choice can change the result substantially.",
       "Artist references describe an approximation or useful starting point unless a capture's creator supplies stronger evidence.",
     ],
-    tone3000Status: live.status,
+    tone3000Status: [live.status, cabinetIrs.status].filter((status) => !status.includes("was not needed")).join(" "),
   };
 }

@@ -2,6 +2,7 @@ import type { AmplitubeGear } from "../amplitube/types.js";
 import type { NormalizedTone } from "../tone3000/types.js";
 
 export type Workflow = "tone3000" | "amplitube" | "hybrid";
+export type DeliveryKind = "tone3000-preset" | "amplitube-instructions" | "amplitube-instructions-and-tone3000-ir";
 
 export interface RecommendationInput {
   target: string;
@@ -10,6 +11,9 @@ export interface RecommendationInput {
   tuning?: string;
   desiredGain?: "clean" | "crunch" | "high-gain";
   preferredWorkflow?: Workflow;
+  priority?: "ready-to-play" | "maximum-tweakability" | "cabinet-flexibility";
+  ownsAmplitube5Max?: boolean;
+  tone3000PluginInstalled?: boolean;
 }
 
 export interface KnobSettings {
@@ -29,6 +33,7 @@ export interface KnobSettings {
 
 export interface ToneApproach {
   workflow: Workflow;
+  deliveryKind: DeliveryKind;
   title: string;
   signalChain: string[];
   tone3000Models: NormalizedTone[];
@@ -44,6 +49,8 @@ export interface RecommendationResult {
   target: string;
   interpretation: string;
   preferredWorkflow: Workflow | null;
+  recommendedWorkflow: Workflow;
+  decision: string;
   approaches: ToneApproach[];
   caveats: string[];
   tone3000Status: string;

@@ -17,7 +17,7 @@ describe("MCP integration", () => {
 
     const tools = await client.listTools();
     expect(tools.tools.map((tool) => tool.name)).toEqual(expect.arrayContaining([
-      "search_tone3000", "get_tone3000_tone", "search_tone3000_cabs", "search_amplitube_gear", "recommend_tone_chain", "troubleshoot_tone", "compare_tones", "get_user_tone_profile", "save_user_tone_profile",
+      "search_tone3000", "get_tone3000_tone", "search_tone3000_cabs", "search_amplitube_gear", "create_tone3000_plugin_preset", "recommend_tone_chain", "troubleshoot_tone", "compare_tones", "get_user_tone_profile", "save_user_tone_profile",
     ]));
 
     const response = await client.callTool({ name: "search_amplitube_gear", arguments: { gearType: "amp", ampFamily: "5150" } });

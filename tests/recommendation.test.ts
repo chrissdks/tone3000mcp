@@ -14,10 +14,32 @@ describe("recommendation flows", () => {
   ])("builds three safe approaches for %s", async (target, expectedAmp) => {
     const recommendation = await recommendToneChain(offlineClient, { target });
     expect(recommendation.approaches.map((item) => item.workflow)).toEqual(["tone3000", "amplitube", "hybrid"]);
+    expect(recommendation.recommendedWorkflow).toBe("amplitube");
     const amplitube = recommendation.approaches.find((item) => item.workflow === "amplitube")!;
     expect(amplitube.amplitubeGear.map((item) => item.displayName)).toContain(expectedAmp);
     expect(amplitube.settings.gain).toBeGreaterThanOrEqual(0);
     expect(recommendation.caveats.join(" ")).toMatch(/starting points/i);
+  });
+
+  it("chooses the AmpliTube plus TONE3000 IR workflow when cabinet flexibility is the priority", async () => {
+    const recommendation = await recommendToneChain(offlineClient, { target: "adjustable modern metal tone", priority: "cabinet-flexibility", ownsAmplitube5Max: true });
+    expect(recommendation.recommendedWorkflow).toBe("hybrid");
+    const hybrid = recommendation.approaches.find((item) => item.workflow === "hybrid")!;
+    expect(hybrid.deliveryKind).toBe("amplitube-instructions-and-tone3000-ir");
+    expect(hybrid.signalChain.join(" ")).toMatch(/IR Loader/i);
+  });
+
+  it("does not search TONE3000 for an explicitly AmpliTube-only recommendation", async () => {
+    let calls = 0;
+    const client = new Tone3000Client({
+      baseUrl: "https://www.tone3000.com/api/v1",
+      secretKey: "test",
+      fetchImpl: async () => { calls += 1; throw new Error("should not be called"); },
+    });
+    const recommendation = await recommendToneChain(client, { target: "clean tone", preferredWorkflow: "amplitube" });
+    expect(recommendation.approaches).toHaveLength(1);
+    expect(recommendation.recommendedWorkflow).toBe("amplitube");
+    expect(calls).toBe(0);
   });
 
   it("compensates for a Les Paul with humbuckers", async () => {

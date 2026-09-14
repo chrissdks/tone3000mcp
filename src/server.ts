@@ -1,6 +1,8 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { searchAmplitubeGear } from "./amplitube/search.js";
+import { Tone3000PresetBuilder } from "./preset-builder/client.js";
+import type { Tone3000PresetRecipe } from "./preset-builder/types.js";
 import { ProfileStore } from "./profile/store.js";
 import { compareNormalizedTones } from "./recommendation/compare.js";
 import { recommendToneChain } from "./recommendation/engine.js";
@@ -13,6 +15,30 @@ import { TONE3000_ARCHITECTURES, TONE3000_GEARS, TONE3000_SORTS } from "./tone30
 const readOnlyAnnotations = { readOnlyHint: true, destructiveHint: false, openWorldHint: false } as const;
 const externalReadAnnotations = { readOnlyHint: true, destructiveHint: false, openWorldHint: true } as const;
 const textArray = z.array(z.string()).max(12);
+const normalizedControl = z.number().min(0).max(1);
+const presetBlockSchema = z.object({
+  tone: z.number().int().positive(),
+  model: z.string().min(1).max(200).optional(),
+  mix: normalizedControl.optional(),
+  outGain: normalizedControl.optional(),
+  inGain: normalizedControl.optional(),
+  enabled: z.boolean().optional(),
+  slimSize: normalizedControl.optional(),
+});
+const presetParametersSchema = z.object({
+  outputLevel: normalizedControl.optional(),
+  inputLevel: normalizedControl.optional(),
+  toneBass: z.number().min(0).max(10).optional(),
+  toneMid: z.number().min(0).max(10).optional(),
+  toneTreble: z.number().min(0).max(10).optional(),
+  toneEqEnabled: z.union([z.literal(0), z.literal(1)]).optional(),
+  gateEnabled: z.union([z.literal(0), z.literal(1)]).optional(),
+  gateThreshold: z.number().min(-100).max(0).optional(),
+  chainPanLeft: normalizedControl.optional(),
+  chainPanRight: normalizedControl.optional(),
+  spreadEnabled: z.union([z.literal(0), z.literal(1)]).optional(),
+  alignEnabled: z.union([z.literal(0), z.literal(1)]).optional(),
+});
 
 function result(data: Record<string, unknown>, message: string) {
   return { structuredContent: data, content: [{ type: "text" as const, text: message }] };
@@ -26,13 +52,14 @@ function errorResult(error: unknown) {
 export interface ServerDependencies {
   tone3000: Tone3000Client;
   profiles: ProfileStore;
+  presetBuilder?: Tone3000PresetBuilder;
 }
 
 export function createGuitarToneServer(deps: ServerDependencies): McpServer {
   const server = new McpServer(
-    { name: "guitar-tone-assistant", version: "0.1.0" },
+    { name: "guitar-tone-assistant", version: "0.2.0" },
     {
-      instructions: "Classify every TONE3000 result before recommending a chain. Amp-head captures need a downstream cab/IR; amp+cab and cabinet captures already include cabinet coloration, so warn before adding another cab. Treat NAM captures as fixed snapshots and AmpliTube amps as continuously adjustable. Artist tones are approximations unless evidence says otherwise.",
+      instructions: "Choose the best delivery workflow for the user's equipment and goal: a ready-to-load TONE3000 plugin preset, exact AmpliTube instructions, or an AmpliTube amp with a TONE3000 cabinet IR. Classify captures before building a chain: amp-head needs a cab/IR; amp+cab already includes one. Credit TONE3000 creators and the external preset compiler. Treat artist tones as approximations.",
     },
   );
 
@@ -126,18 +153,69 @@ export function createGuitarToneServer(deps: ServerDependencies): McpServer {
   );
 
   server.registerTool(
+    "create_tone3000_plugin_preset",
+    {
+      title: "Create a TONE3000 plugin preset",
+      description: "Compile exact, previously selected TONE3000 tone/model IDs into a verified native .t3kpreset file. Use this only when the chosen delivery workflow is the TONE3000 plugin. Preset compilation is powered by the pinned Tone3000 Preset Builder by Thomas Lennon (MIT License).",
+      inputSchema: {
+        name: z.string().min(1).max(100),
+        voicing: z.enum(["mono", "stereo"]).default("mono"),
+        chain: z.array(presetBlockSchema).min(1).max(16),
+        stereo: z.object({
+          branchAfter: z.number().int().min(0).optional(),
+          right: z.array(presetBlockSchema).min(1).max(16),
+        }).optional(),
+        params: presetParametersSchema.optional(),
+      },
+      outputSchema: {
+        artifactId: z.string(),
+        recipe: z.object({ name: z.string(), chain: z.array(z.unknown()) }).passthrough(),
+        files: z.array(z.object({ fileName: z.string(), localPath: z.string(), downloadUrl: z.string().nullable() })),
+        builderCommit: z.string(),
+        attribution: z.string(),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+    },
+    async (input) => {
+      try {
+        if (!deps.presetBuilder) {
+          throw new Error("Tone3000 Preset Builder is not configured for this server.");
+        }
+        if (input.voicing === "stereo" && !input.stereo) {
+          throw new Error("Stereo voicing requires a right-chain definition.");
+        }
+        if (input.stereo?.branchAfter !== undefined && input.stereo.branchAfter >= input.chain.length) {
+          throw new Error("stereo.branchAfter must point to a block in the left chain.");
+        }
+        const recipe: Tone3000PresetRecipe = {
+          name: input.name,
+          chain: input.chain,
+          stereo: input.stereo,
+          params: input.params,
+        };
+        const artifact = await deps.presetBuilder.create(recipe, input.voicing);
+        const destinations = artifact.files.map((file) => file.downloadUrl ?? file.localPath).join(", ");
+        return result(artifact as unknown as Record<string, unknown>, `Created and verified ${artifact.files.length} TONE3000 preset file${artifact.files.length === 1 ? "" : "s"}: ${destinations}. ${artifact.attribution}`);
+      } catch (error) { return errorResult(error); }
+    },
+  );
+
+  server.registerTool(
     "recommend_tone_chain",
     {
       title: "Recommend a guitar tone chain",
-      description: "Build a practical TONE3000-focused, AmpliTube-only, or hybrid rig with capture-aware routing, starting settings, cab advice, gain staging, and live TONE3000 candidates when configured.",
-      inputSchema: { target: z.string().min(1).max(250), guitarType: z.string().max(100).optional(), pickupType: z.string().max(100).optional(), tuning: z.string().max(50).optional(), desiredGain: z.enum(["clean", "crunch", "high-gain"]).optional(), preferredWorkflow: z.enum(["tone3000", "amplitube", "hybrid"]).optional() },
-      outputSchema: { target: z.string(), interpretation: z.string(), preferredWorkflow: z.string().nullable(), approaches: z.array(z.object({ workflow: z.string(), title: z.string(), signalChain: z.array(z.string()), tone3000Models: z.array(z.unknown()), amplitubeGear: z.array(z.unknown()), settings: z.object({ input: z.string(), gain: z.number(), bass: z.number(), mid: z.number(), treble: z.number(), presence: z.number() }).passthrough(), cabRecommendation: z.string(), gainStaging: z.array(z.string()), rationale: z.array(z.string()), warnings: z.array(z.string()) })), caveats: z.array(z.string()), tone3000Status: z.string() },
+      description: "Choose and explain a primary delivery workflow, then provide TONE3000 plugin preset candidates, exact AmpliTube-only instructions, and/or an AmpliTube amp paired with a TONE3000 cabinet IR.",
+      inputSchema: { target: z.string().min(1).max(250), guitarType: z.string().max(100).optional(), pickupType: z.string().max(100).optional(), tuning: z.string().max(50).optional(), desiredGain: z.enum(["clean", "crunch", "high-gain"]).optional(), preferredWorkflow: z.enum(["tone3000", "amplitube", "hybrid"]).optional(), priority: z.enum(["ready-to-play", "maximum-tweakability", "cabinet-flexibility"]).optional(), ownsAmplitube5Max: z.boolean().optional(), tone3000PluginInstalled: z.boolean().optional() },
+      outputSchema: { target: z.string(), interpretation: z.string(), preferredWorkflow: z.string().nullable(), recommendedWorkflow: z.string(), decision: z.string(), approaches: z.array(z.object({ workflow: z.string(), deliveryKind: z.string(), title: z.string(), signalChain: z.array(z.string()), tone3000Models: z.array(z.unknown()), amplitubeGear: z.array(z.unknown()), settings: z.object({ input: z.string(), gain: z.number(), bass: z.number(), mid: z.number(), treble: z.number(), presence: z.number() }).passthrough(), cabRecommendation: z.string(), gainStaging: z.array(z.string()), rationale: z.array(z.string()), warnings: z.array(z.string()) })), caveats: z.array(z.string()), tone3000Status: z.string() },
       annotations: externalReadAnnotations,
     },
     async (input) => {
       try {
         const recommendation = await recommendToneChain(deps.tone3000, input);
-        return result(recommendation as unknown as Record<string, unknown>, `${recommendation.approaches.length} practical approach${recommendation.approaches.length === 1 ? "" : "es"} prepared for ${input.target}. ${recommendation.tone3000Status}`);
+        return result(
+          recommendation as unknown as Record<string, unknown>,
+          `Recommended workflow: ${recommendation.recommendedWorkflow}. ${recommendation.decision} ${recommendation.approaches.length} practical approach${recommendation.approaches.length === 1 ? "" : "es"} prepared. ${recommendation.tone3000Status}`,
+        );
       } catch (error) { return errorResult(error); }
     },
   );

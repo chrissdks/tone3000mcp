@@ -1,8 +1,8 @@
 {
   "name": "guitar-tone-assistant",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
-  "description": "MCP server for TONE3000 discovery and AmpliTube 5 MAX tone design",
+  "description": "MCP tone-design assistant for TONE3000 presets and AmpliTube 5 MAX workflows",
   "type": "module",
   "main": "dist/src/index.js",
   "scripts": {
