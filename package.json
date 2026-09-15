@@ -11,6 +11,7 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/src/index.js",
     "start:http": "node dist/src/http.js",
+    "catalog:build": "node scripts/build-amplitube-max-v2.mjs",
     "test": "vitest run",
     "test:watch": "vitest"
   },

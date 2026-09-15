@@ -16,7 +16,7 @@ Guitar Tone Assistant can:
 - Decide between TONE3000-plugin, AmpliTube-only, and hybrid delivery based on the player's software and priorities.
 - Compile exact selected TONE3000 tone/model IDs into a verified native `.t3kpreset` file.
 - Return a local file path over stdio or a localhost download link over the HTTP transport.
-- Search a small, curated local AmpliTube 5 MAX knowledge layer.
+- Search the complete, versioned 435-model AmpliTube 5 MAX v2 inventory, with richer tone-design metadata for the core recommendation set.
 - Suggest starting settings and adjust them for guitar, pickup type, and tuning.
 - Troubleshoot fizz, mud, harshness, boom, thinness, excessive compression, and weak pick attack.
 - Compare two to four TONE3000 captures.
@@ -29,7 +29,6 @@ It does **not**:
 - Control a DAW or AmpliTube.
 - Create AmpliTube preset files.
 - Reproduce a recorded artist tone exactly.
-- Contain the complete AmpliTube 5 MAX v2 catalog.
 - Automatically apply a saved user profile to every recommendation.
 
 Artist and album references are treated as useful starting points, not claims about exact studio equipment or settings.
@@ -113,7 +112,7 @@ The returned knob values are starting points on a 0–10 scale. They are not gua
 | `search_tone3000` | Search and rank live TONE3000 tone packs with direct page links. |
 | `get_tone3000_tone` | Resolve an ID or URL, classify the capture, and list model metadata and download URLs. |
 | `search_tone3000_cabs` | Find cabinet IRs by speaker, size, and character. |
-| `search_amplitube_gear` | Search the curated local AmpliTube 5 MAX starter catalog. |
+| `search_amplitube_gear` | Search and paginate through all 435 official AmpliTube 5 MAX v2 entries by category, name, alias, hardware basis, and curated tone metadata. |
 | `recommend_tone_chain` | Choose a primary delivery workflow and return the relevant TONE3000, AmpliTube, and hybrid approaches. |
 | `create_tone3000_plugin_preset` | Compile exact selected tone/model IDs into a verified `.t3kpreset` using the attributed external builder. |
 | `troubleshoot_tone` | Give prioritized changes for common tone problems. |
@@ -261,16 +260,35 @@ Review upstream changes and test generated files before advancing the pin. Consu
 
 ## AmpliTube catalog scope
 
-The runtime catalog at [`src/data/amplitube5max.json`](src/data/amplitube5max.json) contains 19 curated starter records. It is not a complete representation of the 435 models listed for AmpliTube 5 MAX v2.
+The runtime catalog at [`src/data/amplitube5max.json`](src/data/amplitube5max.json) contains all **435 models** in IK Multimedia's AmpliTube 5 MAX v2 inventory, document version **5.10.4**, updated **2025-03-27**:
 
-Each runtime record includes mapping confidence and an official source URL. A mapping labeled `not-stated` or `inferred` must not be treated as an exact product identity.
+| Category | Count |
+| --- | ---: |
+| Stomp | 111 |
+| Amp | 111 |
+| Cabinet | 106 |
+| Speaker | 33 |
+| Microphone | 18 |
+| Rack | 48 |
+| Room | 8 |
 
-The repository also contains a researched cross-reference for an earlier 420-item AmpliTube 5 MAX inventory:
+Official membership comes from IK's [AmpliTube 5 MAX v2 gear inventory](https://www.ikmultimedia.com/products/include/at5/gear_list_pdf/AmpliTube_5_MAX_v5.10.4_gear.pdf). Every runtime record carries the inventory version, source URL, category, and PDF page. The source-only extraction is stored in [`docs/research/amplitube-max-v2-inventory.json`](docs/research/amplitube-max-v2-inventory.json).
+
+The v2 catalog was reconciled against the earlier 420-item research rather than replacing it blindly. The reconciliation matched 417 records, added 18, removed 3, and identified 3 renames. See [`docs/research/amplitube-max-v2-reconciliation.json`](docs/research/amplitube-max-v2-reconciliation.json) and the earlier evidence set:
 
 - [`docs/research/amplitube-max-cross-reference.md`](docs/research/amplitube-max-cross-reference.md)
 - [`docs/research/amplitube-max-cross-reference.json`](docs/research/amplitube-max-cross-reference.json)
 
-That research is not yet integrated into the runtime search catalog. Edition, ownership, microphone, alias, pagination, and model-specific control coverage remain future work.
+Inventory coverage and tone-depth coverage are deliberately distinguished. All 435 models are searchable, and 315 currently have a researched hardware basis. Detailed control lists, gain classifications, styles, and hand-tuned pairings are richer for the 19-record core recommendation set preserved in [`src/data/amplitube5max.curated.json`](src/data/amplitube5max.curated.json). Empty tonal fields mean “not curated yet,” not “the model has no controls or uses.” Mapping states such as `inferred`, `not-stated`, and `unresolved` must not be presented as official hardware identities.
+
+To rebuild after reviewing a newer official inventory, extract its factual name list and regenerate the merged catalog:
+
+```powershell
+python scripts/extract-amplitube-inventory.py <official-inventory.pdf> docs/research/amplitube-max-v2-inventory.json
+npm run catalog:build
+npm run build
+npm test
+```
 
 Official product reference: [IK Multimedia AmpliTube 5](https://www.ikmultimedia.com/products/amplitube5/).
 
@@ -293,9 +311,11 @@ src/amplitube/                  Local AmpliTube search and types
 src/recommendation/             Recommendation, comparison, and troubleshooting rules
 src/preset-builder/             Adapter and types for the external preset compiler
 src/profile/                    Local profile storage
-src/data/amplitube5max.json     19-record runtime starter catalog
+src/data/amplitube5max.json     Generated 435-record MAX v2 runtime catalog
+src/data/amplitube5max.curated.json Rich metadata for the core recommendation set
 tests/                          Automated unit tests
 docs/research/                  Catalog research and repository review notes
+scripts/                        Repeatable inventory extraction and catalog merge
 vendor/tone3000-preset-builder/ Pinned external compiler Git submodule
 ```
 
@@ -309,15 +329,15 @@ The main work required before a public release is:
 2. Implement TONE3000 per-user OAuth/Select rather than sharing one server credential.
 3. Validate all upstream API responses before caching or processing them.
 4. Make profile storage safe for reserved IDs and concurrent writes.
-5. Integrate a complete, versioned AmpliTube 5 MAX v2 catalog with microphones and aliases.
-6. Generate settings from each model's real control names and ranges.
+5. Enrich the full AmpliTube catalog with each model's real control names, ranges, channels, modes, and collection ownership metadata.
+6. Generate settings from those model-specific controls instead of the shared starter control vocabulary.
 7. Make saved profiles influence recommendations automatically.
 8. Add DAW- and NAM-player-aware routing instructions.
 9. Add an explicit preview/confirmation step that converts a recommendation into a preset recipe automatically.
-10. Add HTTP, malformed-response, profile-concurrency, and full-catalog tests.
+10. Add HTTP, malformed-response, profile-concurrency, and catalog-update tests.
 
 For detailed review evidence, see [`docs/research/code-review-2026-09-07.md`](docs/research/code-review-2026-09-07.md).
 
 ## Status
 
-This repository is suitable for local experimentation and MCP development. It is not currently suitable for anonymous public hosting, multi-user profile storage, or authoritative coverage of the full AmpliTube 5 MAX v2 product catalog.
+This repository is suitable for local experimentation and MCP development and now has authoritative, versioned inventory coverage of AmpliTube 5 MAX v2. It is not currently suitable for anonymous public hosting, multi-user profile storage, or model-perfect instructions for every control on all 435 models.

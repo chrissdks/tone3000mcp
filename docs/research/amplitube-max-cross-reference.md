@@ -14,7 +14,7 @@ Counts: stomp: 107, amp: 107, cabinet: 101, speaker: 31, microphone: 18, rack: 4
 
 Mapping status: official: 309, original: 6, not-stated: 56, unresolved: 33, inferred: 8, not-applicable: 8.
 
-Machine-readable companion: [JSON](amplitube-max-cross-reference.json). This is a research deliverable; the existing MCP still uses its 19-item starter catalog.
+Machine-readable companion: [JSON](amplitube-max-cross-reference.json). This historical research is merged with the official MAX v2 inventory to build the current 435-item runtime catalog; it is not itself the MAX v2 membership source.
 
 ## Amp (107)
 

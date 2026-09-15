@@ -1,6 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { searchAmplitubeGear } from "./amplitube/search.js";
+import { amplitubeCatalogMetadata, searchAmplitubeGearPage } from "./amplitube/search.js";
 import { Tone3000PresetBuilder } from "./preset-builder/client.js";
 import type { Tone3000PresetRecipe } from "./preset-builder/types.js";
 import { ProfileStore } from "./profile/store.js";
@@ -141,14 +141,18 @@ export function createGuitarToneServer(deps: ServerDependencies): McpServer {
     "search_amplitube_gear",
     {
       title: "Search AmpliTube 5 MAX gear",
-      description: "Search the bundled, curated AmpliTube 5 MAX knowledge layer by gear type, amp family, gain level, or style. Mapping confidence is included so uncertain product identities are not presented as fact.",
-      inputSchema: { gearType: z.enum(["amp", "cabinet", "speaker", "stomp", "rack", "room"]).optional(), ampFamily: z.string().max(100).optional(), gainClass: z.enum(["clean", "crunch", "high-gain", "utility"]).optional(), keywords: textArray.optional(), limit: z.number().int().min(1).max(25).default(10) },
-      outputSchema: { results: z.array(z.object({ id: z.string(), displayName: z.string(), type: z.string(), mappingConfidence: z.string() }).passthrough()), dataScope: z.string() },
+      description: "Search the complete, versioned 435-model AmpliTube 5 MAX v2 inventory by gear type, official name, alias, hardware basis, amp family, gain level, or curated style. Mapping confidence distinguishes official facts from inference and unresolved identities.",
+      inputSchema: { gearType: z.enum(["amp", "cabinet", "speaker", "microphone", "stomp", "rack", "room"]).optional(), ampFamily: z.string().max(100).optional(), gainClass: z.enum(["clean", "crunch", "high-gain", "utility"]).optional(), keywords: textArray.optional(), offset: z.number().int().min(0).default(0), limit: z.number().int().min(1).max(50).default(25) },
+      outputSchema: { results: z.array(z.object({ id: z.string(), displayName: z.string(), type: z.string(), mappingConfidence: z.string() }).passthrough()), totalMatches: z.number(), offset: z.number(), limit: z.number(), hasMore: z.boolean(), dataScope: z.string() },
       annotations: readOnlyAnnotations,
     },
     async (input) => {
-      const results = searchAmplitubeGear(input);
-      return result({ results, dataScope: "Curated minimal starter catalog, not the complete AmpliTube 5 MAX inventory." }, `Found ${results.length} matching AmpliTube gear item${results.length === 1 ? "" : "s"}.`);
+      const page = searchAmplitubeGearPage(input);
+      const metadata = amplitubeCatalogMetadata();
+      return result(
+        { ...page, dataScope: `${metadata.product} inventory ${metadata.inventoryVersion}: ${metadata.total} official included-model records. Detailed controls and tonal curation are currently richer for the core recommendation set.` },
+        `Returned ${page.results.length} of ${page.totalMatches} matching AmpliTube gear item${page.totalMatches === 1 ? "" : "s"} from offset ${page.offset}.`,
+      );
     },
   );
 

@@ -4,7 +4,7 @@
   "inventoryUrl": "https://www.ikmultimedia.com/products/include/at5/gear_list_pdf/AmpliTube_5_MAX_gear.pdf",
   "manualSource": "AmpliTube 5 Custom Shop Gear Models.pdf",
   "manualPageCount": 562,
-  "method": "Inventory names matched to the installed official IK gear manual. Explicit hardware identity lines have official status; inferred aliases and unknowns remain distinct. This research is not wired into the runtime catalog.",
+  "method": "Inventory names matched to the installed official IK gear manual. Explicit hardware identity lines have official status; inferred aliases and unknowns remain distinct. This historical research is merged with the official MAX v2 inventory by scripts/build-amplitube-max-v2.mjs.",
   "categoryCounts": {
     "stomp": 107,
     "amp": 107,

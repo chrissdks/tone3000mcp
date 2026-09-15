@@ -1,0 +1,131 @@
+{
+  "from": "AmpliTube 5 MAX original edition; inventory version 5.0.3 dated 2021-05-03",
+  "to": "AmpliTube 5 MAX v2; inventory version 5.10.4",
+  "matched": 417,
+  "added": [
+    {
+      "category": "stomp",
+      "displayName": "DDelay",
+      "inventoryPage": 2
+    },
+    {
+      "category": "stomp",
+      "displayName": "X-DRIVE",
+      "inventoryPage": 5
+    },
+    {
+      "category": "stomp",
+      "displayName": "X-TIME",
+      "inventoryPage": 5
+    },
+    {
+      "category": "stomp",
+      "displayName": "X-SPACE",
+      "inventoryPage": 5
+    },
+    {
+      "category": "stomp",
+      "displayName": "X-VIBE",
+      "inventoryPage": 5
+    },
+    {
+      "category": "amp",
+      "displayName": "Brit 100 Mod 34/36",
+      "inventoryPage": 7
+    },
+    {
+      "category": "amp",
+      "displayName": "Brit L.A. Gold",
+      "inventoryPage": 7
+    },
+    {
+      "category": "amp",
+      "displayName": "California Tweed",
+      "inventoryPage": 7
+    },
+    {
+      "category": "amp",
+      "displayName": "Mark IIC+",
+      "inventoryPage": 8
+    },
+    {
+      "category": "amp",
+      "displayName": "Mark V",
+      "inventoryPage": 8
+    },
+    {
+      "category": "amp",
+      "displayName": "Triple Crow",
+      "inventoryPage": 9
+    },
+    {
+      "category": "cabinet",
+      "displayName": "1x12 California Tweed",
+      "inventoryPage": 10
+    },
+    {
+      "category": "cabinet",
+      "displayName": "2x12 California Tweed",
+      "inventoryPage": 11
+    },
+    {
+      "category": "cabinet",
+      "displayName": "2x12 RoadKing",
+      "inventoryPage": 11
+    },
+    {
+      "category": "cabinet",
+      "displayName": "4x12 RoadKing Black",
+      "inventoryPage": 13
+    },
+    {
+      "category": "cabinet",
+      "displayName": "4x12 RoadKing Vintage",
+      "inventoryPage": 13
+    },
+    {
+      "category": "speaker",
+      "displayName": "American J40",
+      "inventoryPage": 14
+    },
+    {
+      "category": "speaker",
+      "displayName": "American J100",
+      "inventoryPage": 14
+    }
+  ],
+  "removed": [
+    {
+      "category": "stomp",
+      "displayName": "Delay",
+      "id": "stomp-delay-2"
+    },
+    {
+      "category": "amp",
+      "displayName": "AFD 100",
+      "id": "amp-afd100-1"
+    },
+    {
+      "category": "amp",
+      "displayName": "JCM Slash",
+      "id": "amp-jcmslash-1"
+    }
+  ],
+  "renamed": [
+    {
+      "category": "stomp",
+      "from": "/Delay",
+      "to": "Delay"
+    },
+    {
+      "category": "cabinet",
+      "from": "4x12 1960AV SL",
+      "to": "4x12 1960AV"
+    },
+    {
+      "category": "cabinet",
+      "from": "4x12 1960BV SL",
+      "to": "4x12 1960BV"
+    }
+  ]
+}

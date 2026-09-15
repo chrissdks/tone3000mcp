@@ -10,7 +10,7 @@ describe("recommendation flows", () => {
     ["Metallica Black Album rhythm", "Metal Lead T"],
     ["Alice in Chains Jerry Cantrell Dirt-era rhythm", "SLD 100"],
     ["modern 5150 metal tone", "SJ50"],
-    ["clean Fender-style tone", "American Tube Clean"],
+    ["clean Fender-style tone", "American Tube Clean 1"],
   ])("builds three safe approaches for %s", async (target, expectedAmp) => {
     const recommendation = await recommendToneChain(offlineClient, { target });
     expect(recommendation.approaches.map((item) => item.workflow)).toEqual(["tone3000", "amplitube", "hybrid"]);

@@ -22,7 +22,7 @@ describe("MCP integration", () => {
 
     const response = await client.callTool({ name: "search_amplitube_gear", arguments: { gearType: "amp", ampFamily: "5150" } });
     expect(response.isError).not.toBe(true);
-    expect(response.structuredContent).toMatchObject({ dataScope: expect.stringContaining("starter") });
+    expect(response.structuredContent).toMatchObject({ dataScope: expect.stringContaining("435 official included-model records") });
 
     await client.close();
     await server.close();
